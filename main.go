@@ -6,6 +6,7 @@ import (
 	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -46,11 +47,12 @@ type Credential struct {
 
 func main() {
 	spinner.Start()
+	mfa_code := os.Args[1]
 
 	// get sso url from stdin
 	url := getURL()
 	// start aws sso login
-	ssoLogin(url)
+	ssoLogin(mfa_code, url)
 
 	spinner.Stop()
 	time.Sleep(1 * time.Second)
@@ -59,6 +61,13 @@ func main() {
 // returns sso url from stdin.
 func getURL() string {
 	spinner.Message("reading url from stdin")
+
+	// Ask user which aws profile they would like to authenticate
+	var profile string
+
+	fmt.Printf("Enter name of AWS Profile: ")
+	fmt.Scanf("%s", &profile)
+	fmt.Printf("Authenticating %s\n", profile)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	url := ""
@@ -98,7 +107,7 @@ func getCredentials() (string, string) {
 }
 
 // login with hardware MFA
-func ssoLogin(url string) {
+func ssoLogin(mfa_code string, url string) {
 	username, passphrase := getCredentials()
 	spinner.Message(color.MagentaString("init headless-browser \n"))
 	spinner.Pause()
@@ -119,7 +128,7 @@ func ssoLogin(url string) {
 		}).Element("#awsui-input-0").MustHandle(func(e *rod.Element) {
 			signIn(*page, username, passphrase)
 			// mfa required step
-			mfa(*page)
+			mfa(*page, mfa_code)
 		}).MustDo()
 
 		// allow request
@@ -156,9 +165,11 @@ func signIn(page rod.Page, username, passphrase string) {
 }
 
 // TODO: allow user to enter MFA Code
-func mfa(page rod.Page) {
+func mfa(page rod.Page, mfa_code string) {
 	_ = beeep.Notify("headless-sso", "Touch U2F device to proceed with authenticating AWS SSO", "")
 	_ = beeep.Beep(beeep.DefaultFreq, beeep.DefaultDuration)
+
+	page.MustElement("#input67").MustInput(mfa_code).MustPress(input.Enter)
 
 	spinner.Message(color.YellowString("Touch U2F"))
 }
